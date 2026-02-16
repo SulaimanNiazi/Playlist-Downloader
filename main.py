@@ -5,8 +5,49 @@ from multiprocessing import Process
 from threading import Thread
 
 def download(url: str, format: str, quality: str, path="."):
-    for x in range(100000): print(x)
+    if quality: quality = quality.split(' ')[-1][:-1]
+    
+    opts = {
+        "ignoreerrors": True
+    }
+
+    if format != "No Downloads":
+        if format in ("mp4", "mkv"):
+            opts.update(
+                format = "bestvideo[height<=" + quality + "]+bestaudio",
+                outtmpl = path + "/%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s",
+                writesubtitles = True,
+                subtitlesformat = "srt",
+                allsubtitles = True,
+            )
+            postprocessors = [
+                {
+                    "key": "FFmpegVideoConvertor",
+                    "preferredformat": format
+                }, {
+                    "key": "FFmpegEmbedSubtitle"
+                }
+            ]
+        else:
+            opts.update(
+                format = "bestaudio[ext="+format+"]/bestaudio",
+                outtmpl = path + "/%(playlist)s/%(title)s.%(ext)s",
+            )
+            postprocessors = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": format
+            }]
+        
+        opts.update(
+            writethumbnail = True,
+            cookiesfrombrowser = ("firefox",),
+            ignoreerrors = True,
+            postprocessors = postprocessors + [{"key": "EmbedThumbnail"}],
+        )
+
+    print(opts)
     messagebox.showinfo("Download Complete", "Download was completed successfully")
+
 class gui:
     def __init__(self, root: Tk):
         root.title("Media Downloader")
@@ -55,6 +96,10 @@ class gui:
         self.root = root
 
     def main_button_pressed(self):
+        def handler():
+            self.process.join()
+            self.button.config(text="Download")
+
         if self.process.is_alive():
             if messagebox.askyesno("Cancelling Download", "Are you sure you want to cancel the download?", default="no"): self.process.terminate()
         else:
@@ -62,13 +107,9 @@ class gui:
             format = self.format.get()
             if url and (self.catalog.get() or format != self.formats[0]):
                 self.button.config(text="Cancel")
-                Thread(target=lambda: self.download_handler(url, format, self.quality.get(), self.path.get()), daemon=True).start()
-    
-    def download_handler(self, url: str, format: str, quality: str, path="."):
-        self.process = Process(target=download, args=(url, format, quality, path))
-        self.process.start()
-        self.process.join()
-        self.button.config(text="Download")
+                self.process = Process(target=download, args=(url, format, self.quality.get(), self.path.get()))
+                self.process.start()
+                Thread(target=handler, daemon=True).start()
     
     def close(self):
         if self.process.is_alive():
