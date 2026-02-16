@@ -4,48 +4,47 @@ from tkinter.filedialog import askdirectory
 from multiprocessing import Process
 from threading import Thread
 
-def download(url: str, format: str, quality: str, path="."):
-    if quality: quality = quality.split(' ')[-1][:-1]
-    
-    opts = {
+def download(url: str, preferred: str, quality: str, path: str):
+    options = {
         "ignoreerrors": True
     }
-
-    if format != "No Downloads":
-        if format in ("mp4", "mkv"):
-            opts.update(
-                format = "bestvideo[height<=" + quality + "]+bestaudio",
-                outtmpl = path + "/%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s",
-                writesubtitles = True,
-                subtitlesformat = "srt",
-                allsubtitles = True,
-            )
+    download = preferred != "No Downloads"
+    
+    if download:
+        video = quality != "Best"
+        
+        if video:
+            format = "bestvideo[height<=" + quality.split(' ')[-1][:-1] + "]+bestaudio"
+            outtmpl = "/%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s"
             postprocessors = [
                 {
                     "key": "FFmpegVideoConvertor",
-                    "preferredformat": format
+                    "preferredformat": preferred
                 }, {
                     "key": "FFmpegEmbedSubtitle"
                 }
             ]
         else:
-            opts.update(
-                format = "bestaudio[ext="+format+"]/bestaudio",
-                outtmpl = path + "/%(playlist)s/%(title)s.%(ext)s",
-            )
+            format = "bestaudio[ext=" + preferred + "]/bestaudio"
+            outtmpl = "/%(playlist)s/%(title)s.%(ext)s"
             postprocessors = [{
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": format
+                "preferredcodec": preferred
             }]
         
-        opts.update(
+        options.update(
+            format = format,
+            outtmpl = path + outtmpl,
             writethumbnail = True,
+            writesubtitles = video,
+            subtitlesformat = "srt",
+            allsubtitles = video,
             cookiesfrombrowser = ("firefox",),
-            ignoreerrors = True,
             postprocessors = postprocessors + [{"key": "EmbedThumbnail"}],
         )
 
-    print(opts)
+    print(options)
+
     messagebox.showinfo("Download Complete", "Download was completed successfully")
 
 class gui:
@@ -78,18 +77,21 @@ class gui:
         self.format = StringVar(value=self.formats[0])
         format_combo = Combobox(root, state="readonly", textvariable=self.format, values=self.formats)
         format_combo.grid(column=1, row=2, padx=10, sticky="we")
-        self.quality = StringVar()
-        quality_combo = Combobox(root, state="readonly", textvariable=self.quality)
+        self.quality = StringVar(value="Catalog")
+        quality_combo = Combobox(root, state="readonly", textvariable=self.quality, values=["Catalog"])
         quality_combo.grid(column=2, row=2, padx=10, sticky="we")
-        self.catalog = BooleanVar()
-        Checkbutton(root, text="Catalog", variable=self.catalog).grid(column=3, row=2, padx=10, sticky="we")
+
         def set_qualities(_):
-            if self.format.get() in ("mkv", "mp4"):
+            format = self.format.get()
+            if format in ("mkv", "mp4"):
                 self.quality.set(qualities[3])
                 quality_combo.config(values=qualities)
+            elif format in ("m4a", "mp3"):
+                self.quality.set("Best")
+                quality_combo.config(values=["Best"])
             else:
-                self.quality.set("")
-                quality_combo.config(values=[])
+                self.quality.set("Catalog")
+                quality_combo.config(values=["Catalog"])
         format_combo.bind("<<ComboboxSelected>>", set_qualities)
 
         self.process = Process()
@@ -98,16 +100,15 @@ class gui:
     def main_button_pressed(self):
         def handler():
             self.process.join()
-            self.button.config(text="Download")
+            self.button.config(text="Download", padx=2)
 
         if self.process.is_alive():
             if messagebox.askyesno("Cancelling Download", "Are you sure you want to cancel the download?", default="no"): self.process.terminate()
         else:
             url = self.url_bar.get()
-            format = self.format.get()
-            if url and (self.catalog.get() or format != self.formats[0]):
-                self.button.config(text="Cancel")
-                self.process = Process(target=download, args=(url, format, self.quality.get(), self.path.get()))
+            if url:
+                self.button.config(text="Cancel", padx=10)
+                self.process = Process(target=download, args=(url, self.format.get(), self.quality.get(), self.path.get() or "."))
                 self.process.start()
                 Thread(target=handler, daemon=True).start()
     
