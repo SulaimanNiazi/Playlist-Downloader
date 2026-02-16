@@ -1,4 +1,4 @@
-from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton
+from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox
 from tkinter.ttk import Combobox
 from tkinter.filedialog import askdirectory
 from multiprocessing import Process
@@ -6,11 +6,13 @@ from threading import Thread
 
 def download(url: str, format: str, quality: str, path="."):
     for x in range(100000): print(x)
+    messagebox.showinfo("Download Complete", "Download was completed successfully")
 class gui:
     def __init__(self, root: Tk):
         root.title("Media Downloader")
         root.minsize(700, 300)
         root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
+        root.protocol("WM_DELETE_WINDOW", self.close)
 
         for i in range(4):
             root.columnconfigure(i, weight=10)
@@ -50,10 +52,11 @@ class gui:
         format_combo.bind("<<ComboboxSelected>>", set_qualities)
 
         self.process = Process()
+        self.root = root
 
     def main_button_pressed(self):
         if self.process.is_alive():
-            self.process.terminate()
+            if messagebox.askyesno("Cancelling Download", "Are you sure you want to cancel the download?", default="no"): self.process.terminate()
         else:
             url = self.url_bar.get()
             format = self.format.get()
@@ -66,6 +69,13 @@ class gui:
         self.process.start()
         self.process.join()
         self.button.config(text="Download")
+    
+    def close(self):
+        if self.process.is_alive():
+            answer = messagebox.askyesnocancel("A download is still running", "Do you want to cancel the download (yes) or let it run in the background to completion (No)?")
+            if answer is None: return
+            elif answer: self.process.terminate()
+        self.root.destroy()
 
 if __name__ == "__main__":
     root = Tk()
