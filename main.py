@@ -3,9 +3,12 @@ from tkinter.ttk import Combobox
 from tkinter.filedialog import askdirectory
 from multiprocessing import Process
 from threading import Thread
+from yt_dlp import YoutubeDL
+from json import dump, load
 
 def download(url: str, preferred: str, quality: str, path: str):
     options = {
+        "cookiesfrombrowser": ("firefox",),
         "ignoreerrors": True
     }
     download = preferred != "No Downloads"
@@ -14,23 +17,26 @@ def download(url: str, preferred: str, quality: str, path: str):
         video = quality != "Best"
         
         if video:
-            format = "bestvideo[height<=" + quality.split(' ')[-1][:-1] + "]+bestaudio"
+            format = "bestvideo[ext=" + preferred + "][vcodec^=avc][height<=" + quality.split(' ')[-1][:-1] + "]+bestaudio[ext=m4a]/bestaudio"
             outtmpl = "/%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s"
             postprocessors = [
                 {
                     "key": "FFmpegVideoConvertor",
-                    "preferredformat": preferred
-                }, {
-                    "key": "FFmpegEmbedSubtitle"
+                    "preferedformat": preferred
+                },
+                {
+                    "key": "FFmpegEmbedSubtitle",
                 }
             ]
         else:
             format = "bestaudio[ext=" + preferred + "]/bestaudio"
             outtmpl = "/%(playlist)s/%(title)s.%(ext)s"
-            postprocessors = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": preferred
-            }]
+            postprocessors = [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": preferred
+                }
+            ]
         
         options.update(
             format = format,
@@ -39,13 +45,38 @@ def download(url: str, preferred: str, quality: str, path: str):
             writesubtitles = video,
             subtitlesformat = "srt",
             allsubtitles = video,
-            cookiesfrombrowser = ("firefox",),
-            postprocessors = postprocessors + [{"key": "EmbedThumbnail"}],
+            postprocessors = postprocessors + [
+                {
+                    "key": "EmbedThumbnail",
+                }
+            ],
         )
 
-    print(options)
+    with YoutubeDL(options) as ydl: info = ydl.extract_info(url, download)
 
-    messagebox.showinfo("Download Complete", "Download was completed successfully")
+    if not download:
+        if "entries" in info:
+            path += "/" + (info["entries"][0]["playlist_title"] or "<Untitled playlist>") + ".json"
+
+            try: 
+                with open(path, encoding="utf-8") as file: entries = load(file)
+            except: entries = {}
+
+            changes = 0
+            for entry in info["entries"]:
+                if entry:
+                    uploader = entry.get("channel") or entry.get("uploader") or "<Unknown>"
+                    title = entry.get("title") or "<Untitled>"
+                    if uploader in entries:
+                        if title not in entries[uploader]:
+                            changes += 1
+                            entries[uploader] += [title]
+                    else:
+                        changes += 1
+                        entries[uploader] = [title]
+            
+            with open(path, mode="w", encoding="utf-8") as file: dump(entries, file, ensure_ascii=False, indent=4)
+            print("Changes:", changes)
 
 class gui:
     def __init__(self, root: Tk):
@@ -58,6 +89,7 @@ class gui:
             root.columnconfigure(i, weight=10)
             root.rowconfigure(i, weight=10)
         root.columnconfigure(0, weight=1)
+        root.columnconfigure(3, weight=1)
 
         Label(root, text="URL:").grid(column=0, row=0, padx=10, sticky="we")
         self.url_bar = Entry(root)
@@ -101,6 +133,7 @@ class gui:
         def handler():
             self.process.join()
             self.button.config(text="Download", padx=2)
+            messagebox.showinfo("Download Complete", "Download was completed successfully")
 
         if self.process.is_alive():
             if messagebox.askyesno("Cancelling Download", "Are you sure you want to cancel the download?", default="no"): self.process.terminate()
