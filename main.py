@@ -6,9 +6,9 @@ from threading import Thread
 from yt_dlp import YoutubeDL
 from json import dump, load
 
-def download(url: str, preferred: str, quality: str, path: str):
+def download(url: str, preferred: str, quality: str, path: str, replace: bool, browser: str):
     options = {
-        "cookiesfrombrowser": ("firefox",),
+        "cookiesfrombrowser": (browser,),
         "ignoreerrors": True
     }
     download = preferred != "No Downloads"
@@ -50,6 +50,7 @@ def download(url: str, preferred: str, quality: str, path: str):
                     "key": "EmbedThumbnail",
                 }
             ],
+            overwrites = replace,
         )
 
     with YoutubeDL(options) as ydl: info = ydl.extract_info(url, download)
@@ -58,9 +59,11 @@ def download(url: str, preferred: str, quality: str, path: str):
         if "entries" in info:
             path += "/" + (info["entries"][0]["playlist_title"] or "<Untitled playlist>") + ".json"
 
-            try: 
-                with open(path, encoding="utf-8") as file: entries = load(file)
-            except: entries = {}
+            entries = {}
+            if not replace:
+                try: 
+                    with open(path, encoding="utf-8") as file: entries = load(file)
+                except: entries = {}
 
             changes = 0
             for entry in info["entries"]:
@@ -112,6 +115,8 @@ class gui:
         self.quality = StringVar(value="Catalog")
         quality_combo = Combobox(root, state="readonly", textvariable=self.quality, values=["Catalog"])
         quality_combo.grid(column=2, row=2, padx=10, sticky="we")
+        self.replace = BooleanVar()
+        Checkbutton(root, text="Replace", variable=self.replace).grid(column=3, row=2, padx=10, sticky="we")
 
         def set_qualities(_):
             format = self.format.get()
@@ -125,6 +130,11 @@ class gui:
                 self.quality.set("Catalog")
                 quality_combo.config(values=["Catalog"])
         format_combo.bind("<<ComboboxSelected>>", set_qualities)
+
+        Label(root, text="Browser:").grid(column=0, row=3, padx=10, sticky="we")
+        browsers = ["Chrome", "Firefox", "Vivaldi"]
+        self.browser = StringVar(value=browsers[1])
+        Combobox(root, state="readonly", textvariable=self.browser, values=browsers).grid(column=1, row=3, padx=10, sticky="we")
 
         self.process = Process()
         self.root = root
@@ -141,7 +151,17 @@ class gui:
             url = self.url_bar.get()
             if url:
                 self.button.config(text="Cancel", padx=10)
-                self.process = Process(target=download, args=(url, self.format.get(), self.quality.get(), self.path.get() or "."))
+                self.process = Process(
+                    target=download,
+                    args=(
+                        url,
+                        self.format.get(),
+                        self.quality.get(),
+                        self.path.get() or ".",
+                        self.replace.get(),
+                        self.browser.get().lower()
+                    )
+                )
                 self.process.start()
                 Thread(target=handler, daemon=True).start()
     
