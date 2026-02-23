@@ -1,15 +1,15 @@
 from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox
 from tkinter.ttk import Combobox
 from tkinter.filedialog import askdirectory
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 from threading import Thread
 from yt_dlp import YoutubeDL
 from json import dump, load
 
-def download(url: str, preferred: str, quality: str, path: str, replace: bool, browser: str):
-    options = {
+def download(url: str, preferred: str, quality: str, path: str, replace: bool, browser: str, queue: Queue):
+    options: dict[str, str | bool | tuple[str] | list[dict[str, str]]] = {
         "cookiesfrombrowser": (browser,),
-        "ignoreerrors": True
+        "ignoreerrors": True,
     }
     download = preferred != "No Downloads"
     
@@ -18,7 +18,7 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
         
         if video:
             format = "bestvideo[ext=" + preferred + "][vcodec^=avc][height<=" + quality.split(' ')[-1][:-1] + "]+bestaudio[ext=m4a]/bestaudio"
-            outtmpl = "/%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s"
+            outtmpl = "%(playlist)s/%(playlist_index)s - %(title)s.%(ext)s"
             postprocessors = [
                 {
                     "key": "FFmpegVideoConvertor",
@@ -30,7 +30,7 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
             ]
         else:
             format = "bestaudio[ext=" + preferred + "]/bestaudio"
-            outtmpl = "/%(playlist)s/%(title)s.%(ext)s"
+            outtmpl = "%(playlist)s/%(title)s.%(ext)s"
             postprocessors = [
                 {
                     "key": "FFmpegExtractAudio",
@@ -53,33 +53,51 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
             overwrites = replace,
         )
 
-    with YoutubeDL(options) as ydl: info = ydl.extract_info(url, download)
+    try:
+        with YoutubeDL(options) as ydl:
+            if download:
+                ydl.download(url)
+                queue.put("Download complete")
+            else:
+                entries = {}
+                info = ydl.extract_info(url, download)
 
-    if not download:
-        if "entries" in info:
-            path += "/" + (info["entries"][0]["playlist_title"] or "<Untitled playlist>") + ".json"
+                if "entries" in info:
+                    path += (info["entries"][0]["playlist_title"] or "<Untitled playlist>")
 
-            entries = {}
-            if not replace:
-                try: 
-                    with open(path, encoding="utf-8") as file: entries = load(file)
-                except: entries = {}
+                    if not replace:
+                        try: 
+                            with open(path, encoding="utf-8") as file: entries = load(file)
+                        except: entries = {}
 
-            changes = 0
-            for entry in info["entries"]:
-                if entry:
-                    uploader = entry.get("channel") or entry.get("uploader") or "<Unknown>"
-                    title = entry.get("title") or "<Untitled>"
-                    if uploader in entries:
-                        if title not in entries[uploader]:
-                            changes += 1
-                            entries[uploader] += [title]
-                    else:
-                        changes += 1
-                        entries[uploader] = [title]
-            
-            with open(path, mode="w", encoding="utf-8") as file: dump(entries, file, ensure_ascii=False, indent=4)
-            print("Changes:", changes)
+                    for entry in info["entries"]:
+                        if entry:
+                            uploader = entry.get("channel") or entry.get("uploader") or "<Unknown>"
+                            title = entry.get("title") or "<Untitled>"
+                            if uploader in entries:
+                                if title not in entries[uploader]:
+                                    changes += 1
+                                    entries[uploader] += [title]
+                            else:
+                                changes += 1
+                                entries[uploader] = [title]
+
+                    queue.put("Successfully cataloged 1 entry." if changes == 1 else f"Successfully cataloged {changes} entries.")
+                else:
+                    uploader = info["channel"] or info["uploader"] or "<Unknown>"
+                    title = info["title"] or "<Untitled>"
+                    path += uploader + "-" + title
+                    entries = info
+                    queue.put(f"Successfully cataloged video.")
+                
+                with open(path + ".json", mode="w", encoding="utf-8") as file: dump(entries, file, ensure_ascii=False, indent=4)
+    
+    except TypeError:
+        queue.put("Error: Invalid URL")
+    except Exception as e:
+        queue.put(f"{type(e).__name__}: {e}")
+
+    queue.put("done")
 
 class gui:
     def __init__(self, root: Tk):
@@ -138,12 +156,27 @@ class gui:
 
         self.process = Process()
         self.root = root
+        self.queue = Queue(maxsize=2)
 
     def main_button_pressed(self):
         def handler():
-            self.process.join()
+            message = "Download failed prematurely."
+            
+            while True:
+                try:
+                    value = self.queue.get()
+                    if value == "done":
+                        break
+                    else:
+                        message = value
+                except: break
+            
             self.button.config(text="Download", padx=2)
-            messagebox.showinfo("Download Complete", "Download was completed successfully")
+            lower = message.lower()
+            if lower.__contains__("fail") or lower.__contains__("error"):
+                messagebox.showerror("Download Failed", message)
+            else:
+                messagebox.showinfo("Download Complete", message)
 
         if self.process.is_alive():
             if messagebox.askyesno("Cancelling Download", "Are you sure you want to cancel the download?", default="no"): self.process.terminate()
@@ -157,9 +190,10 @@ class gui:
                         url,
                         self.format.get(),
                         self.quality.get(),
-                        self.path.get() or ".",
+                        (self.path.get() or '.') + '/',
                         self.replace.get(),
-                        self.browser.get().lower()
+                        self.browser.get().lower(),
+                        self.queue
                     )
                 )
                 self.process.start()
