@@ -1,4 +1,4 @@
-from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox
+from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox, Frame, Text, Scrollbar, END, ALL
 from tkinter.ttk import Combobox
 from tkinter.filedialog import askdirectory
 from multiprocessing import Process, Queue
@@ -13,10 +13,11 @@ class gui:
         root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
         root.protocol('WM_DELETE_WINDOW', self.close)
 
-        for i in range(4):
-            root.columnconfigure(i, weight=10)
-            root.rowconfigure(i, weight=10)
+        for i in range(5):
+            root.rowconfigure(i, pad=10, weight=10)
         root.columnconfigure(0, weight=1)
+        root.columnconfigure(1, weight=10)
+        root.columnconfigure(2, weight=10)
         root.columnconfigure(3, weight=1)
 
         Label(root, text='URL:').grid(column=0, row=0, padx=10, sticky='we')
@@ -61,14 +62,32 @@ class gui:
         self.browser = StringVar(value=browsers[1])
         Combobox(root, state='readonly', textvariable=self.browser, values=browsers).grid(column=1, row=3, padx=10, sticky='we')
 
+        output_frame = Frame(root)
+        output_frame.grid(column=0, columnspan=4, row=4, padx=10, pady=10, sticky='we')
+        output_frame.columnconfigure(0, weight=1)
+        output_frame.rowconfigure(0, weight=1)
+
+        xscroll = Scrollbar(output_frame, orient='horizontal')
+        xscroll.grid(column=0, row=1, sticky='we')
+        yscroll = Scrollbar(output_frame, orient='vertical')
+        yscroll.grid(column=1, row=0, sticky='ns')
+        self.output = Text(output_frame, state='disabled', wrap='none', xscrollcommand=xscroll.set, yscrollcommand=yscroll.set)
+        xscroll.config(command=self.output.xview)
+        yscroll.config(command=self.output.yview)
+        self.output.grid(column=0, row=0, sticky='we')
+
         self.process = Process()
-        self.root = root
         self.queue = Queue(maxsize=2)
+        self.root = root
 
     def main_button_pressed(self):
         def handler():
             message = 'Download failed prematurely.'
-            
+
+            self.output.config(state='normal')
+            self.output.delete('1.0', END)
+            self.output.config(state='disabled')
+
             while True:
                 try:
                     value = self.queue.get()
@@ -76,6 +95,10 @@ class gui:
                         break
                     else:
                         message = value
+                        self.output.config(state='normal')
+                        self.output.insert(END, value + '\n')
+                        self.output.see(END)
+                        self.output.config(state='disabled')
                 except: break
             
             self.button.config(text='Download', padx=2)

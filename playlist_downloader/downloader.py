@@ -2,11 +2,28 @@ from yt_dlp import YoutubeDL
 from json import dump, load
 from multiprocessing import Queue
 
+class logger:
+    def __init__(self, queue: Queue):
+        self.queue = queue
+
+    def debug(self, message: str):
+        self.queue.put(message)
+
+    def info(self, message: str):
+        self.queue.put(message)
+
+    def warning(self, message: str):
+        self.queue.put(message)
+        
+    def error(self, message: str):
+        self.queue.put(message)
+
 def download(url: str, preferred: str, quality: str, path: str, replace: bool, browser: str, queue: Queue):
-    options: dict[str, str | bool | tuple[str] | list[dict[str, str]]] = {
+    options: dict[str, str | bool | tuple[str] | list[dict[str, str] | logger]] = {
         'cookiesfrombrowser': (browser,),
         'remote_components': ['ejs:github'],
         'ignoreerrors': True,
+        'logger': logger(queue),
     }
     download = preferred != 'No Downloads'
     
