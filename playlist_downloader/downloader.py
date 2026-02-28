@@ -1,6 +1,7 @@
 from yt_dlp import YoutubeDL
 from json import dump, load
 from multiprocessing import Queue
+from re import sub
 
 class logger:
     def __init__(self, queue: Queue):
@@ -77,7 +78,7 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
                 info = ydl.extract_info(url, download)
 
                 if 'entries' in info:
-                    path += (info['entries'][0]['playlist_title'] or '<Untitled playlist>')
+                    path += validate(info['entries'][0]['playlist_title']) or 'Untitled playlist'
 
                     if not replace:
                         try: 
@@ -98,9 +99,9 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
 
                     queue.put('Successfully cataloged 1 entry.' if changes == 1 else f'Successfully cataloged {changes} entries.')
                 else:
-                    uploader = info['channel'] or info['uploader'] or '<Unknown>'
-                    title = info['title'] or '<Untitled>'
-                    path += uploader + ' - ' + title
+                    uploader = info['channel'] or info['uploader'] or 'Unknown'
+                    title = info['title'] or 'Untitled'
+                    path += validate(uploader + ' - ' + title)
                     entries = info
                     queue.put(f'Successfully cataloged video.')
                 
@@ -112,3 +113,11 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
         queue.put(f'{type(e).__name__}: {e}')
 
     queue.put('done')
+
+def validate(name: str) -> str:
+    if name.isalnum():
+        reserved = ['CON', 'PRN', 'AUX', 'NUL'] + [f'COM{n}' for n in range(10)] + [f'LPT{n}' for n in range(10)]
+        if name in reserved:
+            return name + '_'
+    else:
+        return sub('[<>:"/\\|?*\x00-\x1F]', '_', name)
