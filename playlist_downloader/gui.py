@@ -1,9 +1,10 @@
-from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox, Frame, Text, Scrollbar, END, ALL
+from tkinter import Tk, Label, Entry, Button, StringVar, BooleanVar, Checkbutton, messagebox, Frame, Text, Scrollbar, END, Event
 from tkinter.ttk import Combobox
 from tkinter.filedialog import askdirectory
 from multiprocessing import Process, Queue
 from threading import Thread
 from .downloader import download
+from pathlib import Path
 
 class gui:
     def __init__(self):
@@ -12,6 +13,7 @@ class gui:
         root.minsize(700, 300)
         root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
         root.protocol('WM_DELETE_WINDOW', self.close)
+        root.bind('<Return>', self.main_button_pressed)
 
         for i in range(5):
             root.rowconfigure(i, pad=10, weight=10)
@@ -19,6 +21,33 @@ class gui:
         root.columnconfigure(1, weight=10)
         root.columnconfigure(2, weight=10)
         root.columnconfigure(3, weight=1)
+
+        def copied_link():
+            try:
+                copied = self.root.clipboard_get()
+                if '.' not in copied or '/' not in copied: raise ValueError()
+            except:
+                copied = ''
+            return copied
+
+        def enter_value(source: Event | Entry, value = ''):
+            if type(source) is not Entry: source: Entry = source.widget
+            if source.cget('fg') == 'grey':
+                source.config(fg='black')
+                source.delete(0, END)
+            if value:
+                source.insert(0, value)
+
+        def focus_out(source: Event | Entry, bg: str):
+            if type(source) is not Entry: source: Entry = source.widget
+            if bg and not source.get():
+                source.config(fg='grey')
+                source.insert(0, bg)
+
+        def focus_in(source: Event, update = False):
+            source: Entry = source.widget
+            if update: focus_out(source, copied_link())
+            if source.cget('fg') == 'grey': source.icursor(0)
 
         Label(root, text='URL:').grid(column=0, row=0, padx=10, sticky='we')
         self.url_bar = Entry(root)
@@ -29,7 +58,14 @@ class gui:
         Label(root, text='Location:').grid(column=0, row=1, padx=10, sticky='we')
         self.path = Entry(root)
         self.path.grid(column=1, columnspan=2, row=1, padx=10, sticky='we')
-        Button(root, text='Browse', command=lambda: self.path.insert(0, askdirectory(initialdir='.'))).grid(column=3, row=1, padx=10, sticky='we')
+        Button(root, text='Browse', command=lambda: enter_value(self.path, askdirectory(initialdir='.'))).grid(column=3, row=1, padx=10, sticky='we')
+
+        self.url_bar.bind('<Key>', enter_value)
+        self.url_bar.bind('<FocusIn>', lambda e: focus_in(e, True))
+        self.url_bar.bind('<FocusOut>', lambda e: focus_out(e, copied_link()))
+        self.path.bind('<Key>', enter_value)
+        self.path.bind('<FocusIn>', focus_in)
+        self.path.bind('<FocusOut>', lambda e: focus_out(e, Path.cwd()))
 
         self.formats = ['No Downloads', 'm4a', 'mkv', 'mp3', 'mp4']
         qualities = ['8K UHD 4320p', '4K UHD 2160p', 'QHD 1440p', 'FHD 1080p', 'HD 720p', 'SD 480p', 'SD 360p', 'LD 240p', 'LD 144p']
@@ -80,7 +116,10 @@ class gui:
         self.queue = Queue(maxsize=2)
         self.root = root
 
-    def main_button_pressed(self):
+        focus_out(self.url_bar, copied_link())
+        focus_out(self.path, Path.cwd())
+
+    def main_button_pressed(self, _=None):
         def handler():
             message = 'Download failed prematurely.'
 
@@ -88,9 +127,9 @@ class gui:
             self.output.delete('1.0', END)
             self.output.config(state='disabled')
 
-            while True:
+            while self.process.is_alive():
                 try:
-                    value = self.queue.get()
+                    value = self.queue.get(timeout=60)
                     if value == 'done':
                         break
                     else:
@@ -99,17 +138,23 @@ class gui:
                         self.output.insert(END, value + '\n')
                         self.output.see(END)
                         self.output.config(state='disabled')
-                except: break
+                except:
+                    message = 'Timeout error'
+                    break
             
             self.button.config(text='Download', padx=2)
             lower = message.lower()
-            if lower.__contains__('fail') or lower.__contains__('error'):
+            if lower.__contains__('fail') or lower.__contains__('error') or lower.__contains__('cancel'):
                 messagebox.showerror('Download Failed', message)
             else:
                 messagebox.showinfo('Download Complete', message)
 
         if self.process.is_alive():
-            if messagebox.askyesno('Cancelling Download', 'Are you sure you want to cancel the download?', default='no'): self.process.terminate()
+            if messagebox.askyesno('Cancelling Download', 'Are you sure you want to cancel the download?', default='no'):
+                self.queue.put('Download Cancelled')
+                self.process.terminate()
+                self.process.join()
+
         else:
             url = self.url_bar.get()
             if url:
