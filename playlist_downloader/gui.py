@@ -5,6 +5,8 @@ from multiprocessing import Process, Queue
 from threading import Thread
 from .downloader import download
 from pathlib import Path
+from os.path import join
+import sys
 
 class gui:
     def __init__(self):
@@ -14,6 +16,7 @@ class gui:
         root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.bind('<Return>', self.main_button_pressed)
+        root.iconbitmap(join(sys._MEIPASS if hasattr(sys, '_MEIPASS') else Path.cwd(), 'icon.ico'))
 
         for i in range(5):
             root.rowconfigure(i, pad=10, weight=10)
