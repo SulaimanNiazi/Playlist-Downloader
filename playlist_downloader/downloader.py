@@ -20,7 +20,7 @@ class logger:
         self.queue.put(message)
 
 def download(url: str, preferred: str, quality: str, path: str, replace: bool, browser: str, queue: Queue):
-    options: dict[str, str | bool | tuple[str] | list[dict[str, str] | logger]] = {
+    options: dict[str, str | bool | tuple[str] | list[dict[str, str]] | list[str] | logger] = {
         'cookiesfrombrowser': (browser,),
         'remote_components': ['ejs:github'],
         'ignoreerrors': True,
@@ -75,7 +75,7 @@ def download(url: str, preferred: str, quality: str, path: str, replace: bool, b
                 queue.put('Download complete')
             else:
                 entries = {}
-                info = ydl.extract_info(url, download)
+                info = ydl.extract_info(url, False)
 
                 if 'entries' in info:
                     path += validate(info['entries'][0]['playlist_title']) or 'Untitled playlist'
