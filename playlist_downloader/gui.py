@@ -80,8 +80,6 @@ class gui:
         self.quality = StringVar(value='Catalog')
         quality_combo = Combobox(root, state='readonly', textvariable=self.quality, values=['Catalog'])
         quality_combo.grid(column=2, row=2, padx=10, sticky='we')
-        self.replace = BooleanVar()
-        Checkbutton(root, text='Replace', variable=self.replace).grid(column=3, row=2, padx=10, sticky='we')
 
         def set_qualities(_):
             format = self.format.get()
@@ -100,6 +98,15 @@ class gui:
         browsers = ['Chrome', 'Firefox', 'Vivaldi']
         self.browser = StringVar(value=browsers[1])
         Combobox(root, state='readonly', textvariable=self.browser, values=browsers).grid(column=1, row=3, padx=10, sticky='we')
+        self.replace = BooleanVar()
+        Checkbutton(root, text='Replace', variable=self.replace).grid(column=2, row=3, padx=10, sticky='w')
+        def export():
+            log = self.output.get('1.0', END)
+            if log:
+                with open('log.txt', 'w+', encoding='utf-8') as f:
+                    f.write(log)
+                    messagebox.showinfo('Log export', 'Log exported successfully')
+        Button(root, text='Export log', command=export).grid(column=3, row=3, padx=10, sticky='we')
 
         output_frame = Frame(root)
         output_frame.grid(column=0, columnspan=4, row=4, padx=10, pady=10, sticky='we')
